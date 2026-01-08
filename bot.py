@@ -157,4 +157,40 @@ async def confirm(callback: CallbackQuery, state: FSMContext):
     await callback.message.answer(text, reply_markup=kb.as_markup())
 
 @dp.callback_query(Booking.confirming, F.data == "confirm")
-async def finalize(callback: CallbackQuery, state: FSMContext
+async def finalize(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    data = await state.get_data()
+    barber_id = data["barber_id"]
+    chosen_date = data["date"]
+    chosen_time = data["time"]
+
+    # Verificare finală (evită dubluri)
+    free = await get_free_slots(barber_id, chosen_date)
+    if chosen_time not in free:
+        await callback.message.answer("⚠️ Slotul tocmai a fost ocupat. Te rog alege altă oră.")
+        await state.set_state(Booking.choosing_time)
+        return
+
+    client = await get_client_by_tgid(callback.from_user.id)
+    client_name = client[2] if client else callback.from_user.full_name
+    phone = client[3] if client and client[3] else ""
+
+    await create_appointment(barber_id, client_name, phone, chosen_date, chosen_time)
+    await state.clear()
+
+    await callback.message.answer(f"✅ Programare creată pentru {chosen_date} la {chosen_time}. Mulțumim!")
+
+@dp.callback_query(F.data == "cancel")
+async def cancel(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await state.clear()
+    await callback.message.answer("❌ Programarea a fost anulată. Poți reîncepe cu /start.")
+
+# Run
+async def main():
+    await init_db()
+    await seed_data()
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
