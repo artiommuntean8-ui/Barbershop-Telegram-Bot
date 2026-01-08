@@ -84,6 +84,15 @@ async def get_locations() -> List[Tuple[int, str]]:
         async with db.execute("SELECT id, name FROM locations ORDER BY name") as cur:
             return await cur.fetchall()
 
+async def get_barber_name(barber_id: int) -> str | None:
+    import aiosqlite
+    from config import DB_PATH
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT name FROM barbers WHERE id=?", (barber_id,)) as cur:
+            row = await cur.fetchone()
+            return row[0] if row else None
+
+
 async def get_barbers_by_location(location_id: int) -> List[Tuple[int, str]]:
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT id, name FROM barbers WHERE location_id=? ORDER BY name", (location_id,)) as cur:
