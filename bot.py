@@ -14,7 +14,8 @@ from states import Booking, Phone
 from db import (
     init_db, seed_data, get_locations, get_barbers_by_location,
     get_free_slots, get_client_by_tgid, add_or_update_client,
-    set_client_phone, create_appointment, get_barber_name
+    set_client_phone, create_appointment, get_barber_name, get_appointments_for_barber,
+    notify_barber
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -56,6 +57,37 @@ async def save_phone(message: Message, state: FSMContext):
     await set_client_phone(message.from_user.id, message.text.strip())
     await state.clear()
     await message.answer("✅ Telefon salvat. Poți continua cu rezervarea: /start")
+
+# список ID админов (замени на реальные Telegram ID)
+ADMINS = [123456789, 987654321]
+
+@dp.message(Command("admin"))
+async def admin_panel(message: Message):
+    if message.from_user.id not in ADMINS:
+        await message.answer("⛔ У вас нет доступа к панели администратора.")
+        return
+
+    today = date.today().strftime("%Y-%m-%d")
+    barbers = await get_barbers_by_location(location_id=None)  # все барберы
+
+    kb = InlineKeyboardBuilder()
+    for barber_id, barber_name in barbers:
+        kb.button(text=barber_name, callback_data=f"admin:{barber_id}:{today}")
+    kb.adjust(1)
+    await message.answer("💈 Выберите барбера для просмотра записей на сегодня:", reply_markup=kb.as_markup())
+
+@dp.callback_query(F.data.startswith("admin:"))
+async def show_barber_appointments(callback: CallbackQuery):
+    _, barber_id, date_str = callback.data.split(":")
+    appointments = await get_appointments_for_barber(int(barber_id), date_str)
+
+    if not appointments:
+        await callback.message.answer("📭 Записей нет.")
+        return
+
+    text = "\n".join([f"{a[2]} — {a[0]} ({a[1]})" for a in appointments])
+    await callback.message.answer(f"📋 Записи на {date_str}:\n{text}")
+    
 
 @dp.message(Phone.waiting_phone)
 async def invalid_phone(message: Message):
@@ -176,6 +208,7 @@ async def finalize(callback: CallbackQuery, state: FSMContext):
     phone = client[3] if client and client[3] else ""
 
     await create_appointment(barber_id, client_name, phone, chosen_date, chosen_time)
+    await notify_barber(barber_id, client_name, phone, chosen_date, chosen_time)
     await state.clear()
 
     await callback.message.answer(f"✅ Programare creată pentru {chosen_date} la {chosen_time}. Mulțumim!")

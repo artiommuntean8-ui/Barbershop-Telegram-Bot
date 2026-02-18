@@ -1,6 +1,7 @@
 import aiosqlite
 from typing import List, Tuple
 from config import DB_PATH, DEFAULT_SLOTS
+from bot import bot
 
 # --- Schema ---
 CREATE_LOCATIONS = """
@@ -141,3 +142,19 @@ async def get_appointments_for_barber(barber_id: int, date: str):
             (barber_id, date)
         ) as cur:
             return await cur.fetchall()
+
+# словарь: barber_id -> chat_id (нужно заранее собрать chat_id барберов)
+BARBER_CHAT_IDS = {
+    101: 555111222,  # Mihai
+    102: 555333444,  # Sergiu
+    # ...
+}
+
+async def notify_barber(barber_id: int, client_name: str, phone: str, date: str, time: str):
+    chat_id = BARBER_CHAT_IDS.get(barber_id)
+    if chat_id:
+        await bot.send_message(
+            chat_id,
+            f"📢 Новая запись:\n👤 {client_name}\n📞 {phone}\n📅 {date} в {time}"
+        )
+
