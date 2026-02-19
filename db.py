@@ -1,7 +1,6 @@
 import aiosqlite
 from typing import List, Tuple
 from config import DB_PATH, DEFAULT_SLOTS
-from bot import bot
 
 # --- Schema ---
 CREATE_LOCATIONS = """
