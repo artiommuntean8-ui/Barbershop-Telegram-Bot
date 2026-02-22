@@ -1,7 +1,6 @@
 import asyncio
 import logging
 from datetime import date, timedelta
-
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery
@@ -14,12 +13,11 @@ from states import Booking, Phone
 from db import (
     init_db, seed_data, get_locations, get_barbers_by_location,
     get_free_slots, get_client_by_tgid, add_or_update_client,
-    set_client_phone, create_appointment, get_barber_name, get_appointments_for_barber,
-    notify_barber
+    set_client_phone, create_appointment, get_barber_name,
+    get_appointments_for_barber
 )
 
 logging.basicConfig(level=logging.INFO)
-
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 

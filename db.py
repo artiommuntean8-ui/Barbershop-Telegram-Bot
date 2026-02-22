@@ -1,108 +1,63 @@
 import aiosqlite
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from config import DB_PATH, DEFAULT_SLOTS
 
-# --- Schema ---
-CREATE_LOCATIONS = """
-CREATE TABLE IF NOT EXISTS locations (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE
-);
-"""
-
-CREATE_BARBERS = """
-CREATE TABLE IF NOT EXISTS barbers (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    location_id INTEGER NOT NULL,
-    FOREIGN KEY(location_id) REFERENCES locations(id)
-);
-"""
-
-CREATE_APPOINTMENTS = """
-CREATE TABLE IF NOT EXISTS appointments (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    barber_id INTEGER NOT NULL,
-    client_id INTEGER,
-    client_name TEXT NOT NULL,
-    phone TEXT,
-    date TEXT NOT NULL,
-    time TEXT NOT NULL,
-    created_at TEXT DEFAULT (datetime('now')),
-    FOREIGN KEY(barber_id) REFERENCES barbers(id)
-);
-"""
-
-CREATE_CLIENTS = """
-CREATE TABLE IF NOT EXISTS clients (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    tg_id INTEGER UNIQUE,
-    name TEXT,
-    phone TEXT
-);
-"""
-
-# --- Init & seed ---
 async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(CREATE_LOCATIONS)
-        await db.execute(CREATE_BARBERS)
-        await db.execute(CREATE_APPOINTMENTS)
-        await db.execute(CREATE_CLIENTS)
+        await db.execute("""CREATE TABLE IF NOT EXISTS locations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE)""")
+        await db.execute("""CREATE TABLE IF NOT EXISTS barbers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            location_id INTEGER NOT NULL,
+            FOREIGN KEY(location_id) REFERENCES locations(id))""")
+        await db.execute("""CREATE TABLE IF NOT EXISTS appointments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            barber_id INTEGER NOT NULL,
+            client_name TEXT NOT NULL,
+            phone TEXT,
+            date TEXT NOT NULL,
+            time TEXT NOT NULL,
+            FOREIGN KEY(barber_id) REFERENCES barbers(id))""")
+        await db.execute("""CREATE TABLE IF NOT EXISTS clients (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tg_id INTEGER UNIQUE,
+            name TEXT,
+            phone TEXT)""")
         await db.commit()
 
+# funcții pentru seed, citire, inserare
 async def seed_data():
     async with aiosqlite.connect(DB_PATH) as db:
-        # Locații
-        locations = ["Buiucani", "Râșcani", "Centru"]
-        for loc in locations:
+        for loc in ("Buiucani", "Râșcani", "Centru"):
             await db.execute("INSERT OR IGNORE INTO locations (name) VALUES (?)", (loc,))
-        # Barberi per locație (exemplu)
-        # Obține id-urile locațiilor
-        loc_ids = {}
-        async with db.execute("SELECT id, name FROM locations") as cur:
-            for row in await cur.fetchall():
-                loc_ids[row[1]] = row[0]
-
-        barbers_seed = [
-            ("Mihai", loc_ids["Buiucani"]),
-            ("Sergiu", loc_ids["Buiucani"]),
-            ("Andrei", loc_ids["Râșcani"]),
-            ("Vlad", loc_ids["Centru"]),
-            ("Ion", loc_ids["Centru"]),
-        ]
-        for name, location_id in barbers_seed:
-            await db.execute(
-                "INSERT INTO barbers (name, location_id) SELECT ?, ? WHERE NOT EXISTS (SELECT 1 FROM barbers WHERE name=? AND location_id=?)",
-                (name, location_id, name, location_id)
-            )
         await db.commit()
 
-# --- Helpers ---
 async def get_locations() -> List[Tuple[int, str]]:
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT id, name FROM locations ORDER BY name") as cur:
             return await cur.fetchall()
 
-async def get_barber_name(barber_id: int) -> str | None:
-    import aiosqlite
-    from config import DB_PATH
+async def get_barbers_by_location(location_id: Optional[int]) -> List[Tuple[int, str]]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        if location_id:
+            async with db.execute("SELECT id, name FROM barbers WHERE location_id=?", (location_id,)) as cur:
+                return await cur.fetchall()
+        else:
+            async with db.execute("SELECT id, name FROM barbers") as cur:
+                return await cur.fetchall()
+
+async def get_barber_name(barber_id: int) -> Optional[str]:
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT name FROM barbers WHERE id=?", (barber_id,)) as cur:
             row = await cur.fetchone()
             return row[0] if row else None
 
-
-async def get_barbers_by_location(location_id: int) -> List[Tuple[int, str]]:
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT id, name FROM barbers WHERE location_id=? ORDER BY name", (location_id,)) as cur:
-            return await cur.fetchall()
-
 async def get_booked_times(barber_id: int, date: str) -> List[str]:
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT time FROM appointments WHERE barber_id=? AND date=?", (barber_id, date)) as cur:
-            rows = await cur.fetchall()
-            return [r[0] for r in rows]
+            return [r[0] for r in await cur.fetchall()]
 
 async def get_free_slots(barber_id: int, date: str) -> List[str]:
     booked = await get_booked_times(barber_id, date)
@@ -111,7 +66,8 @@ async def get_free_slots(barber_id: int, date: str) -> List[str]:
 async def add_or_update_client(tg_id: int, name: str):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
-            "INSERT INTO clients (tg_id, name) VALUES (?, ?) ON CONFLICT(tg_id) DO UPDATE SET name=excluded.name",
+            "INSERT INTO clients (tg_id, name) VALUES (?, ?) "
+            "ON CONFLICT(tg_id) DO UPDATE SET name=excluded.name",
             (tg_id, name)
         )
         await db.commit()
@@ -141,19 +97,3 @@ async def get_appointments_for_barber(barber_id: int, date: str):
             (barber_id, date)
         ) as cur:
             return await cur.fetchall()
-
-# словарь: barber_id -> chat_id (нужно заранее собрать chat_id барберов)
-BARBER_CHAT_IDS = {
-    101: 555111222,  # Mihai
-    102: 555333444,  # Sergiu
-    # ...
-}
-
-async def notify_barber(barber_id: int, client_name: str, phone: str, date: str, time: str):
-    chat_id = BARBER_CHAT_IDS.get(barber_id)
-    if chat_id:
-        await bot.send_message(
-            chat_id,
-            f"📢 Новая запись:\n👤 {client_name}\n📞 {phone}\n📅 {date} в {time}"
-        )
-
