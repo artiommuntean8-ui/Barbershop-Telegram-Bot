@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery
@@ -216,6 +216,46 @@ async def cancel(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await state.clear()
     await callback.message.answer("❌ Programarea a fost anulată. Poți reîncepe cu /start.")
+
+# --- Reminder function ---
+async def schedule_reminder(user_id: int, date_str: str, time_str: str):
+    visit_dt = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
+    remind_dt = visit_dt - timedelta(hours=1)
+    delay = (remind_dt - datetime.now()).total_seconds()
+
+    if delay > 0:
+        await asyncio.sleep(delay)
+        await bot.send_message(user_id, f"⏰ Напоминание: у вас запись сегодня в {time_str}!")
+
+# --- Confirm handler (finalize) ---
+@dp.callback_query(Booking.confirming, F.data == "confirm")
+async def finalize(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    data = await state.get_data()
+    barber_id = data["barber_id"]
+    chosen_date = data["date"]
+    chosen_time = data["time"]
+
+    free = await get_free_slots(barber_id, chosen_date)
+    if chosen_time not in free:
+        await callback.message.answer("⚠️ Slotul tocmai a fost ocupat. Te rog alege altă oră.")
+        await state.set_state(Booking.choosing_time)
+        return
+
+    client = await get_client_by_tgid(callback.from_user.id)
+    client_name = client[2] if client else callback.from_user.full_name
+    phone = client[3] if client and client[3] else ""
+
+    await create_appointment(barber_id, client_name, phone, chosen_date, chosen_time)
+    await state.clear()
+
+    await callback.message.answer(f"✅ Programare creată pentru {chosen_date} la {chosen_time}. Mulțumim!")
+
+    # --- Reminder ---
+    asyncio.create_task(schedule_reminder(callback.from_user.id, chosen_date, chosen_time))
+
+# restul handlerilor (start, choose_location, etc.) rămân la fel
+
 
 # Run
 async def main():
