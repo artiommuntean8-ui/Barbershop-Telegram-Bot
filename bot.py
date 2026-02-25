@@ -91,6 +91,31 @@ async def show_barber_appointments(callback: CallbackQuery):
 async def invalid_phone(message: Message):
     await message.answer("Format invalid. Exemplu: +37360123456")
 
+@dp.message(Command("mybookings"))
+async def show_my_bookings(message: Message):
+    client = await get_client_by_tgid(message.from_user.id)
+    if not client:
+        await message.answer("❌ Nu ești înregistrat. Folosește /start pentru a începe.")
+        return
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT date, time, barber_id FROM appointments WHERE client_name=? ORDER BY date, time",
+            (client[2],)
+        ) as cur:
+            rows = await cur.fetchall()
+
+    if not rows:
+        await message.answer("📭 Nu ai programări active.")
+        return
+
+    text = "📋 Programările tale:\n"
+    for date_str, time_str, barber_id in rows:
+        barber_name = await get_barber_name(barber_id)
+        text += f"• {date_str} la {time_str} cu {barber_name}\n"
+
+    await message.answer(text)
+
 # Flow rezervare: locație
 @dp.callback_query(F.data == "flow:start")
 async def choose_location(callback: CallbackQuery, state: FSMContext):
