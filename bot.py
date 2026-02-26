@@ -7,6 +7,7 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
+from config import DB_PATH
 
 from config import BOT_TOKEN
 from states import Booking, Phone
@@ -115,6 +116,44 @@ async def show_my_bookings(message: Message):
         text += f"• {date_str} la {time_str} cu {barber_name}\n"
 
     await message.answer(text)
+
+@dp.message(Command("cancel"))
+async def cancel_booking(message: Message):
+    client = await get_client_by_tgid(message.from_user.id)
+    if not client:
+        await message.answer("❌ Nu ești înregistrat.")
+        return
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT id, date, time, barber_id FROM appointments WHERE client_name=? ORDER BY date, time",
+            (client[2],)
+        ) as cur:
+            rows = await cur.fetchall()
+
+    if not rows:
+        await message.answer("📭 Nu ai programări active.")
+        return
+
+    kb = InlineKeyboardBuilder()
+    text = "📋 Programările tale:\n"
+    for appt_id, date_str, time_str, barber_id in rows:
+        barber_name = await get_barber_name(barber_id)
+        text += f"• {date_str} la {time_str} cu {barber_name}\n"
+        kb.button(text=f"❌ {date_str} {time_str}", callback_data=f"cancel:{appt_id}")
+    kb.adjust(1)
+
+    await message.answer(text, reply_markup=kb.as_markup())
+
+@dp.callback_query(F.data.startswith("cancel:"))
+async def confirm_cancel(callback: CallbackQuery):
+    appt_id = int(callback.data.split(":")[1])
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM appointments WHERE id=?", (appt_id,))
+        await db.commit()
+
+    await callback.message.answer("✅ Programarea a fost anulată.")
+    await callback.answer()
 
 # Flow rezervare: locație
 @dp.callback_query(F.data == "flow:start")
