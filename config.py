@@ -12,3 +12,9 @@ DEFAULT_SLOTS = [
     "13:00", "14:00", "15:00",
     "16:00", "17:00", "18:00"
 ]
+
+# Promocoduri
+PROMO_CODES = {
+    "PROMO20": 20, 
+    "FIRST10": 10
+}

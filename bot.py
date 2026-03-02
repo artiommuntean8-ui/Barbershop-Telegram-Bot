@@ -7,7 +7,7 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
-from config import DB_PATH
+from config import DB_PATH, PROMO_CODES
 
 from config import BOT_TOKEN
 from states import Booking, Phone
@@ -74,6 +74,21 @@ async def admin_panel(message: Message):
         kb.button(text=barber_name, callback_data=f"admin:{barber_id}:{today}")
     kb.adjust(1)
     await message.answer("💈 Выберите барбера для просмотра записей на сегодня:", reply_markup=kb.as_markup())
+
+@dp.message(Command("promo"))
+async def apply_promo(message: Message, state: FSMContext):
+    code = message.text.split(maxsplit=1)[1] if len(message.text.split()) > 1 else None
+    if not code:
+        await message.answer("ℹ️ Folosește: /promo COD_PROMO")
+        return
+
+    discount = PROMO_CODES.get(code.upper())
+    if discount:
+        await state.update_data(promo=discount)
+        await message.answer(f"🎉 Cod valid! Ai {discount}% reducere la următoarea vizită.")
+    else:
+        await message.answer("❌ Cod promoțional invalid.")
+
 
 @dp.callback_query(F.data.startswith("admin:"))
 async def show_barber_appointments(callback: CallbackQuery):
@@ -299,6 +314,13 @@ async def finalize(callback: CallbackQuery, state: FSMContext):
     barber_id = data["barber_id"]
     chosen_date = data["date"]
     chosen_time = data["time"]
+
+    data = await state.get_data()
+    promo = data.get("promo")
+    if promo:
+        await callback.message.answer(f"✅ Programare creată. Reducerea aplicată: {promo}%")
+    else:
+        await callback.message.answer(f"✅ Programare creată fără reducere.")
 
     free = await get_free_slots(barber_id, chosen_date)
     if chosen_time not in free:
