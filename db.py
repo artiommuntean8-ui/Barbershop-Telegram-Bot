@@ -20,11 +20,14 @@ async def init_db():
             date TEXT NOT NULL,
             time TEXT NOT NULL,
             FOREIGN KEY(barber_id) REFERENCES barbers(id))""")
-        await db.execute("""CREATE TABLE IF NOT EXISTS clients (
+        await db.execute("""CREATE TABLE IF NOT EXISTS barbers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tg_id INTEGER UNIQUE,
-            name TEXT,
-            phone TEXT)""")
+            name TEXT NOT NULL,
+            location_id INTEGER NOT NULL,
+            experience TEXT,
+            specialty TEXT,
+            FOREIGN KEY(location_id) REFERENCES locations(id))""")
+
         await db.commit()
 
 # funcții pentru seed, citire, inserare

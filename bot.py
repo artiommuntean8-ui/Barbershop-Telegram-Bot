@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import aiosqlite
 from datetime import date, timedelta, datetime
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
@@ -306,6 +307,12 @@ async def schedule_reminder(user_id: int, date_str: str, time_str: str):
         await asyncio.sleep(delay)
         await bot.send_message(user_id, f"⏰ Напоминание: у вас запись сегодня в {time_str}!")
 
+async def get_barber_profile(barber_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT name, experience, specialty FROM barbers WHERE id=?", (barber_id,)) as cur:
+            return await cur.fetchone()
+
+
 # --- Confirm handler (finalize) ---
 @dp.callback_query(Booking.confirming, F.data == "confirm")
 async def finalize(callback: CallbackQuery, state: FSMContext):
@@ -340,7 +347,22 @@ async def finalize(callback: CallbackQuery, state: FSMContext):
     # --- Reminder ---
     asyncio.create_task(schedule_reminder(callback.from_user.id, chosen_date, chosen_time))
 
-# restul handlerilor (start, choose_location, etc.) rămân la fel
+@dp.callback_query(F.data.startswith("barber:"))
+async def choose_barber(callback: CallbackQuery, state: FSMContext):
+    barber_id = int(callback.data.split(":")[1])
+    profile = await get_barber_profile(barber_id)
+
+    if profile:
+        name, exp, spec = profile
+        await callback.message.answer(
+            f"👨‍🔧 {name}\n"
+            f"📅 Experiență: {exp}\n"
+            f"✂️ Specializare: {spec}"
+        )
+
+    await state.update_data(barber_id=barber_id)
+    # apoi continui cu alegerea datei
+
 
 
 # Run
