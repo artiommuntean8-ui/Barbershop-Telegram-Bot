@@ -4,7 +4,7 @@ import aiosqlite
 from datetime import date, timedelta, datetime
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, FSInputFile
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -170,6 +170,18 @@ async def confirm_cancel(callback: CallbackQuery):
 
     await callback.message.answer("✅ Programarea a fost anulată.")
     await callback.answer()
+
+@dp.message(Command("gallery"))
+async def show_gallery(message: Message):
+    # trimite câteva imagini din folderul local
+    photos = [
+        FSInputFile("images/fade.jpg"),
+        FSInputFile("images/beard.jpg"),
+        FSInputFile("images/classic.jpg")
+    ]
+    await message.answer("📸 Exemple de lucrări MolodoyBarbershop:")
+    for photo in photos:
+        await message.answer_photo(photo)
 
 # Flow rezervare: locație
 @dp.callback_query(F.data == "flow:start")
