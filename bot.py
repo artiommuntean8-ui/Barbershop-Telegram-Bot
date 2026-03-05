@@ -9,6 +9,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
 from config import DB_PATH, PROMO_CODES
+import os
 
 from config import BOT_TOKEN
 from states import Booking, Phone
@@ -182,6 +183,39 @@ async def show_gallery(message: Message):
     await message.answer("📸 Exemple de lucrări MolodoyBarbershop:")
     for photo in photos:
         await message.answer_photo(photo)
+
+@dp.message(Command("addphoto"))
+async def add_photo(message: Message):
+    if message.from_user.id not in ADMINS:
+        await message.answer("⛔ Nu ai drepturi de admin.")
+        return
+
+    if not message.photo:
+        await message.answer("📷 Trimite o fotografie împreună cu comanda /addphoto.")
+        return
+
+    # ia cea mai bună rezoluție
+    photo = message.photo[-1]
+    file_path = f"images/{photo.file_id}.jpg"
+    os.makedirs("images", exist_ok=True)
+    await bot.download(photo, destination=file_path)
+
+    await message.answer("✅ Fotografia a fost adăugată în galerie!")
+
+@dp.message(Command("gallery"))
+async def show_gallery(message: Message):
+    if not os.path.exists("images"):
+        await message.answer("📭 Galeria este goală.")
+        return
+
+    files = os.listdir("images")
+    if not files:
+        await message.answer("📭 Galeria este goală.")
+        return
+
+    await message.answer("📸 Exemple de lucrări MolodoyBarbershop:")
+    for f in files[:5]:  # trimite primele 5 imagini
+        await message.answer_photo(FSInputFile(f"images/{f}"))
 
 # Flow rezervare: locație
 @dp.callback_query(F.data == "flow:start")
