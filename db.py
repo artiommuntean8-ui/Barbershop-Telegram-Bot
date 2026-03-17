@@ -1,5 +1,5 @@
 import aiosqlite
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Any
 from config import DB_PATH, DEFAULT_SLOTS
 
 async def init_db():
@@ -7,11 +7,6 @@ async def init_db():
         await db.execute("""CREATE TABLE IF NOT EXISTS locations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE)""")
-        await db.execute("""CREATE TABLE IF NOT EXISTS barbers (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            location_id INTEGER NOT NULL,
-            FOREIGN KEY(location_id) REFERENCES locations(id))""")
         await db.execute("""CREATE TABLE IF NOT EXISTS appointments (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             barber_id INTEGER NOT NULL,
@@ -19,14 +14,19 @@ async def init_db():
             phone TEXT,
             date TEXT NOT NULL,
             time TEXT NOT NULL,
-            FOREIGN KEY(barber_id) REFERENCES barbers(id))""")
+            FOREIGN KEY(barber_id) REFERENCES barbers(id) ON DELETE CASCADE)""")
         await db.execute("""CREATE TABLE IF NOT EXISTS barbers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             location_id INTEGER NOT NULL,
             experience TEXT,
             specialty TEXT,
-            FOREIGN KEY(location_id) REFERENCES locations(id))""")
+            FOREIGN KEY(location_id) REFERENCES locations(id) ON DELETE CASCADE)""")
+        await db.execute("""CREATE TABLE IF NOT EXISTS clients (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tg_id INTEGER NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            phone TEXT)""")
 
         await db.commit()
 
@@ -56,6 +56,11 @@ async def get_barber_name(barber_id: int) -> Optional[str]:
         async with db.execute("SELECT name FROM barbers WHERE id=?", (barber_id,)) as cur:
             row = await cur.fetchone()
             return row[0] if row else None
+
+async def get_barber_profile(barber_id: int) -> Optional[Tuple[Any, ...]]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT name, experience, specialty FROM barbers WHERE id=?", (barber_id,)) as cur:
+            return await cur.fetchone()
 
 async def get_booked_times(barber_id: int, date: str) -> List[str]:
     async with aiosqlite.connect(DB_PATH) as db:

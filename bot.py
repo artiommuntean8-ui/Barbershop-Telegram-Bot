@@ -16,7 +16,7 @@ from states import Booking, Phone
 from db import (
     init_db, seed_data, get_locations, get_barbers_by_location,
     get_free_slots, get_client_by_tgid, add_or_update_client,
-    set_client_phone, create_appointment, get_barber_name,
+    set_client_phone, create_appointment, get_barber_name, get_barber_profile,
     get_appointments_for_barber
 )
 
@@ -65,7 +65,7 @@ ADMINS = [123456789, 987654321]
 @dp.message(Command("admin"))
 async def admin_panel(message: Message):
     if message.from_user.id not in ADMINS:
-        await message.answer("⛔ У вас нет доступа к панели администратора.")
+        await message.answer("⛔ Nu aveți acces la panoul de administrare.")
         return
 
     today = date.today().strftime("%Y-%m-%d")
@@ -75,7 +75,7 @@ async def admin_panel(message: Message):
     for barber_id, barber_name in barbers:
         kb.button(text=barber_name, callback_data=f"admin:{barber_id}:{today}")
     kb.adjust(1)
-    await message.answer("💈 Выберите барбера для просмотра записей на сегодня:", reply_markup=kb.as_markup())
+    await message.answer("💈 Alegeți barberul pentru a vedea programările de astăzi:", reply_markup=kb.as_markup())
 
 @dp.message(Command("promo"))
 async def apply_promo(message: Message, state: FSMContext):
@@ -98,11 +98,11 @@ async def show_barber_appointments(callback: CallbackQuery):
     appointments = await get_appointments_for_barber(int(barber_id), date_str)
 
     if not appointments:
-        await callback.message.answer("📭 Записей нет.")
+        await callback.message.answer("📭 Nu sunt programări.")
         return
 
     text = "\n".join([f"{a[2]} — {a[0]} ({a[1]})" for a in appointments])
-    await callback.message.answer(f"📋 Записи на {date_str}:\n{text}")
+    await callback.message.answer(f"📋 Programări pentru {date_str}:\n{text}")
     
 
 @dp.message(Phone.waiting_phone)
@@ -172,18 +172,6 @@ async def confirm_cancel(callback: CallbackQuery):
     await callback.message.answer("✅ Programarea a fost anulată.")
     await callback.answer()
 
-@dp.message(Command("gallery"))
-async def show_gallery(message: Message):
-    # trimite câteva imagini din folderul local
-    photos = [
-        FSInputFile("images/fade.jpg"),
-        FSInputFile("images/beard.jpg"),
-        FSInputFile("images/classic.jpg")
-    ]
-    await message.answer("📸 Exemple de lucrări MolodoyBarbershop:")
-    for photo in photos:
-        await message.answer_photo(photo)
-
 @dp.message(Command("addphoto"))
 async def add_photo(message: Message):
     if message.from_user.id not in ADMINS:
@@ -250,15 +238,28 @@ async def choose_barber(callback: CallbackQuery, state: FSMContext):
 @dp.callback_query(Booking.choosing_barber, F.data.startswith("barber:"))
 async def choose_day(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
+    await state.set_state(Booking.choosing_day)
     barber_id = int(callback.data.split(":")[1])
     await state.update_data(barber_id=barber_id)
+
+    # --- NEW: Show barber profile ---
+    profile = await get_barber_profile(barber_id)
+    profile_text = ""
+    if profile:
+        name, exp, spec = profile
+        exp_text = f"\n📅 Experiență: {exp}" if exp else ""
+        spec_text = f"\n✂️ Specializare: {spec}" if spec else ""
+        profile_text = f"Ați ales barberul:\n\n*👨‍🔧 {name}*{exp_text}{spec_text}\n\n"
 
     kb = InlineKeyboardBuilder()
     for dval, dlabel in day_options():
         kb.button(text=dlabel, callback_data=f"day:{dval}")
     kb.adjust(3)
-    await state.set_state(Booking.choosing_day)
-    await callback.message.answer("🗓 Alege ziua:", reply_markup=kb.as_markup())
+    await callback.message.edit_text(
+        f"{profile_text}🗓 Alegeți ziua:",
+        reply_markup=kb.as_markup(),
+        parse_mode="MarkdownV2"
+    )
 
 @dp.callback_query(Booking.choosing_day, F.data.startswith("day:"))
 async def choose_time(callback: CallbackQuery, state: FSMContext):
@@ -315,16 +316,21 @@ async def confirm(callback: CallbackQuery, state: FSMContext):
 @dp.callback_query(Booking.confirming, F.data == "confirm")
 async def finalize(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
+    
     data = await state.get_data()
     barber_id = data["barber_id"]
     chosen_date = data["date"]
     chosen_time = data["time"]
+    promo = data.get("promo")
 
-    # Verificare finală (evită dubluri)
+    # Final check to prevent double booking
     free = await get_free_slots(barber_id, chosen_date)
     if chosen_time not in free:
-        await callback.message.answer("⚠️ Slotul tocmai a fost ocupat. Te rog alege altă oră.")
-        await state.set_state(Booking.choosing_time)
+        await callback.message.edit_text(
+            "⚠️ Ne pare rău, acest interval orar a fost ocupat chiar acum. "
+            "Te rugăm să reîncepi procesul folosind /start."
+        )
+        await state.clear()
         return
 
     client = await get_client_by_tgid(callback.from_user.id)
@@ -332,10 +338,17 @@ async def finalize(callback: CallbackQuery, state: FSMContext):
     phone = client[3] if client and client[3] else ""
 
     await create_appointment(barber_id, client_name, phone, chosen_date, chosen_time)
-    await notify_barber(barber_id, client_name, phone, chosen_date, chosen_time)
-    await state.clear()
 
-    await callback.message.answer(f"✅ Programare creată pentru {chosen_date} la {chosen_time}. Mulțumim!")
+    # Prepare final confirmation message
+    final_message = f"✅ Programare creată pentru {chosen_date} la {chosen_time}. Mulțumim!"
+    if promo:
+        final_message += f"\n🎉 Reducerea ta de {promo}% a fost aplicată."
+
+    await callback.message.edit_text(final_message)
+
+    # Schedule a reminder
+    asyncio.create_task(schedule_reminder(callback.from_user.id, chosen_date, chosen_time))
+    await state.clear()
 
 @dp.callback_query(F.data == "cancel")
 async def cancel(callback: CallbackQuery, state: FSMContext):
@@ -351,65 +364,7 @@ async def schedule_reminder(user_id: int, date_str: str, time_str: str):
 
     if delay > 0:
         await asyncio.sleep(delay)
-        await bot.send_message(user_id, f"⏰ Напоминание: у вас запись сегодня в {time_str}!")
-
-async def get_barber_profile(barber_id: int):
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT name, experience, specialty FROM barbers WHERE id=?", (barber_id,)) as cur:
-            return await cur.fetchone()
-
-
-# --- Confirm handler (finalize) ---
-@dp.callback_query(Booking.confirming, F.data == "confirm")
-async def finalize(callback: CallbackQuery, state: FSMContext):
-    await callback.answer()
-    data = await state.get_data()
-    barber_id = data["barber_id"]
-    chosen_date = data["date"]
-    chosen_time = data["time"]
-
-    data = await state.get_data()
-    promo = data.get("promo")
-    if promo:
-        await callback.message.answer(f"✅ Programare creată. Reducerea aplicată: {promo}%")
-    else:
-        await callback.message.answer(f"✅ Programare creată fără reducere.")
-
-    free = await get_free_slots(barber_id, chosen_date)
-    if chosen_time not in free:
-        await callback.message.answer("⚠️ Slotul tocmai a fost ocupat. Te rog alege altă oră.")
-        await state.set_state(Booking.choosing_time)
-        return
-
-    client = await get_client_by_tgid(callback.from_user.id)
-    client_name = client[2] if client else callback.from_user.full_name
-    phone = client[3] if client and client[3] else ""
-
-    await create_appointment(barber_id, client_name, phone, chosen_date, chosen_time)
-    await state.clear()
-
-    await callback.message.answer(f"✅ Programare creată pentru {chosen_date} la {chosen_time}. Mulțumim!")
-
-    # --- Reminder ---
-    asyncio.create_task(schedule_reminder(callback.from_user.id, chosen_date, chosen_time))
-
-@dp.callback_query(F.data.startswith("barber:"))
-async def choose_barber(callback: CallbackQuery, state: FSMContext):
-    barber_id = int(callback.data.split(":")[1])
-    profile = await get_barber_profile(barber_id)
-
-    if profile:
-        name, exp, spec = profile
-        await callback.message.answer(
-            f"👨‍🔧 {name}\n"
-            f"📅 Experiență: {exp}\n"
-            f"✂️ Specializare: {spec}"
-        )
-
-    await state.update_data(barber_id=barber_id)
-    # apoi continui cu alegerea datei
-
-
+        await bot.send_message(user_id, f"⏰ Memento: aveți o programare astăzi la {time_str}!")
 
 # Run
 async def main():
