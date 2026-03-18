@@ -18,3 +18,11 @@ PROMO_CODES = {
     "PROMO20": 20, 
     "FIRST10": 10
 }
+
+SERVICES = {
+    "Tunsoare Bărbați": 250,
+    "Tunsoare Barbă": 150,
+    "Pachet Tată + Fiu": 400,
+    "Vopsit": 200,
+    "Spălat + Aranjat": 100
+}

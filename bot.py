@@ -8,7 +8,7 @@ from aiogram.types import Message, CallbackQuery, FSInputFile
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
-from config import DB_PATH, PROMO_CODES
+from config import DB_PATH, PROMO_CODES, SERVICES
 import os
 
 from config import BOT_TOKEN
@@ -38,6 +38,7 @@ async def start(message: Message, state: FSMContext):
     await add_or_update_client(message.from_user.id, message.from_user.full_name)
     kb = InlineKeyboardBuilder()
     kb.button(text="Rezervă o programare", callback_data="flow:start")
+    kb.button(text="💰 Lista de prețuri", callback_data="show_prices")
     kb.button(text="Actualizează telefonul", callback_data="flow:phone")
     kb.adjust(1)
     await state.clear()
@@ -104,6 +105,21 @@ async def show_barber_appointments(callback: CallbackQuery):
     text = "\n".join([f"{a[2]} — {a[0]} ({a[1]})" for a in appointments])
     await callback.message.answer(f"📋 Programări pentru {date_str}:\n{text}")
     
+@dp.message(Command("prices"))
+async def cmd_prices(message: Message):
+    text = "📋 <b>Lista de servicii și prețuri:</b>\n\n"
+    for service, price in SERVICES.items():
+        text += f"✂️ {service}: {price} MDL\n"
+    await message.answer(text, parse_mode="HTML")
+
+@dp.callback_query(F.data == "show_prices")
+async def cb_prices(callback: CallbackQuery):
+    await callback.answer()
+    text = "📋 <b>Lista de servicii și prețuri:</b>\n\n"
+    for service, price in SERVICES.items():
+        text += f"✂️ {service}: {price} MDL\n"
+    await callback.message.answer(text, parse_mode="HTML")
+
 @dp.message(Command("broadcast"))
 async def broadcast(message: Message):
     if message.from_user.id not in ADMINS:
