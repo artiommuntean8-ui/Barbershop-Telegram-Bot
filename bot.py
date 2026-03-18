@@ -17,7 +17,7 @@ from db import (
     init_db, seed_data, get_locations, get_barbers_by_location,
     get_free_slots, get_client_by_tgid, add_or_update_client,
     set_client_phone, create_appointment, get_barber_name, get_barber_profile,
-    get_appointments_for_barber
+    get_appointments_for_barber, get_all_client_ids
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -104,6 +104,28 @@ async def show_barber_appointments(callback: CallbackQuery):
     text = "\n".join([f"{a[2]} — {a[0]} ({a[1]})" for a in appointments])
     await callback.message.answer(f"📋 Programări pentru {date_str}:\n{text}")
     
+@dp.message(Command("broadcast"))
+async def broadcast(message: Message):
+    if message.from_user.id not in ADMINS:
+        return
+
+    # Extrage textul mesajului după comandă
+    text = message.text.replace("/broadcast", "", 1).strip()
+    if not text:
+        await message.answer("ℹ️ Folosește: /broadcast <mesajul tău>")
+        return
+
+    clients = await get_all_client_ids()
+    count = 0
+    for user_id in clients:
+        try:
+            await bot.send_message(user_id, f"📢 <b>Anunț MolodoyBarbershop:</b>\n\n{text}", parse_mode="HTML")
+            count += 1
+            await asyncio.sleep(0.05) # Evităm spam limits
+        except Exception:
+            pass # Utilizatorul a blocat botul
+    
+    await message.answer(f"✅ Mesaj trimis cu succes la {count} utilizatori.")
 
 @dp.message(Phone.waiting_phone)
 async def invalid_phone(message: Message):

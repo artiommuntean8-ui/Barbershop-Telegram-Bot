@@ -105,3 +105,8 @@ async def get_appointments_for_barber(barber_id: int, date: str):
             (barber_id, date)
         ) as cur:
             return await cur.fetchall()
+
+async def get_all_client_ids() -> List[int]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT tg_id FROM clients") as cur:
+            return [row[0] for row in await cur.fetchall()]
