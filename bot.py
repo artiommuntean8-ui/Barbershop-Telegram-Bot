@@ -47,6 +47,19 @@ async def start(message: Message, state: FSMContext):
         reply_markup=kb.as_markup()
     )
 
+@dp.message(Command("help"))
+async def cmd_help(message: Message):
+    text = (
+        "🆘 <b>Comenzi disponibile:</b>\n\n"
+        "/start - Meniul principal\n"
+        "/prices - Lista de prețuri\n"
+        "/mybookings - Programările mele\n"
+        "/cancel - Anulează o programare\n"
+        "/promo [COD] - Aplică un cod promoțional\n"
+        "/help - Acest mesaj de ajutor"
+    )
+    await message.answer(text, parse_mode="HTML")
+
 # Telefon
 @dp.callback_query(F.data == "flow:phone")
 async def ask_phone(callback: CallbackQuery, state: FSMContext):
