@@ -431,6 +431,8 @@ async def schedule_reminder(user_id: int, date_str: str, time_str: str):
 async def main():
     await init_db()
     await seed_data()
+    # Ștergem webhook-ul existent pentru a permite Long Polling
+    await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
