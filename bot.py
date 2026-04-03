@@ -42,10 +42,20 @@ async def start(message: Message, state: FSMContext):
     kb.button(text="Actualizează telefonul", callback_data="flow:phone")
     kb.adjust(1)
     await state.clear()
-    await message.answer(
-        "👋 Salut! Bine ai venit la MolodoyBarbershop.\nAlege o acțiune:",
-        reply_markup=kb.as_markup()
+
+    text = (
+        "👋 <b>Salut! Bine ai venit la MolodoyBarbershop.</b>\n\n"
+        "🤖 <b>Comenzi rapide:</b>\n"
+        "/start - Meniul principal\n"
+        "/prices - Lista de prețuri și servicii\n"
+        "/mybookings - Vezi programările tale\n"
+        "/promo - Aplică un cod promoțional\n"
+        "/gallery - Portofoliul nostru\n"
+        "/help - Suport și ajutor\n\n"
+        "Alege o opțiune de mai jos sau folosește o comandă:"
     )
+
+    await message.answer(text, reply_markup=kb.as_markup(), parse_mode="HTML")
 
 @dp.message(Command("help"))
 async def cmd_help(message: Message):
